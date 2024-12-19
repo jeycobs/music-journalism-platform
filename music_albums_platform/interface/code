@@ -1,0 +1,481 @@
+'''
+PAGES = {
+    "Главная" : home_page,
+    "Новости" : news_page,
+    "Рецензии" : reviews_page,
+    "Жанровая аналитика" : genres_page
+}
+
+st.title("🎵  music project") 
+
+selected_page = st.selectbox("навигация", PAGES.keys())
+PAGES[selected_page]()
+'''
+
+custom_css = """
+<style>
+    /* Стили для контейнера вкладок */
+    .stTabs [role="tablist"] {
+        display: flex;
+        justify-content: space-around;
+        background-color: #1f77b4; /* Цвет фона вкладок */
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+    }
+
+    /* Стили для каждой вкладки */
+    .stTabs [role="tab"] {
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        padding: 10px 20px;
+        margin: 0 5px;
+        cursor: pointer;
+    }
+
+    /* Стили для активной вкладки */
+    .stTabs [role="tab"][aria-selected="true"] {
+        background-color: #ff7f0e; /* Цвет активной вкладки */
+        border-radius: 5px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Стили для содержимого вкладки */
+    .stTabs [role="tabpanel"] {
+        background-color: #f5f5f5; /* Фон контента */
+        padding: 20px;
+        border-radius: 0 0 0.5rem 0.5rem;
+        min-height: 300px; /* Высота контента */
+    }
+</style>
+"""
+
+
+_________________________________
+#запуск
+import streamlit as st
+from interface.pages.home import home_page
+from interface.pages.news import news_page
+from interface.pages.genres import genres_page
+from interface.pages.reviews import reviews_page
+from interface.pages.account import account_page
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import pandas as pd
+import bcrypt
+
+#настройки подключения к PostgreSQL
+DB_CONFIG = {
+    "dbname": "musicdb",
+    "user": "admin",
+    "password": "test",
+    "host": "localhost",
+    "port": "5432",
+}
+DB_HOST = "localhost"
+DB_NAME = "musicdb"
+DB_USER = "admin"
+DB_PASSWORD = "test"
+
+def get_data(query):
+    try:
+        with psycopg2.connect(**DB_CONFIG) as connection:
+            return pd.read_sql_query(query, connection)
+    except Exception as e:
+        st.error(f'ошибка подключения к базе данных: {e}')
+        return pd.DataFrame()
+st.set_page_config(
+    page_title = "music project",
+    page_icon = "🎵",
+    layout = "wide"
+)
+
+custom_css = """
+<style>
+    /* Фон для вкладки */
+    .stApp{
+        background-color: #e4e7ed;
+    }
+
+    /* Стили для контейнера вкладок */
+    .stTabs [role="tablist"] {
+        display: flex;
+        justify-content: space-around;
+        background-color: #0e466e; /* Цвет фона вкладок */
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+    }
+
+    /* Стили для каждой вкладки */
+    .stTabs [role="tab"] {
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        padding: 10px 20px;
+        margin: 0 5px;
+        cursor: pointer;
+    }
+
+    /* Стили для активной вкладки */
+    .stTabs [role="tab"][aria-selected="true"] {
+        background-color: #0d6eff; /* Цвет активной вкладки */
+        border-radius: 5px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Стили для содержимого вкладки */
+    .stTabs [role="tabpanel"] {
+        background-color: #6c6b70; /* Фон контента */
+        padding: 20px;
+        border-radius: 0 0 0.5rem 0.5rem;
+        min-height: 300px; /* Высота контента */
+    }
+    
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+</style>
+"""
+
+st.markdown(custom_css, unsafe_allow_html=True)
+
+def get_db_connection():
+    """Подключение к базе данных."""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        return conn
+    except Exception as e:
+        st.error(f"Ошибка подключения к базе данных: {e}")
+        return None
+    
+def create_user(username, password):
+    """Добавляет нового пользователя в базу данных."""
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+                    (username, hashed_password.decode('utf-8'))
+                )
+                conn.commit()
+        except Exception as e:
+            st.error(f"Ошибка добавления пользователя: {e}")
+        finally:
+            conn.close()
+
+def authenticate_user(username, password):
+    """Проверяет учетные данные пользователя."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM users WHERE username = %s",
+                    (username,)
+                )
+                user = cur.fetchone()
+                if user and bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+                    return user
+        except Exception as e:
+            st.error(f"Ошибка авторизации: {e}")
+        finally:
+            conn.close()
+    return None
+
+
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.username = None
+tabs = st.tabs(['Главная', 'Новости', 'Рецензии', 'Жанровая аналитика', 'Аккаунт'])
+with tabs[0]:
+    home_page()
+
+with tabs[1]:
+    news_page()
+
+with tabs[2]:
+    genres_page()
+
+with tabs[3]:
+    reviews_page()
+
+with tabs[4]:
+    if st.session_state.authenticated:
+        st.success(f"Вы вошли как {st.session_state.username}")
+        if st.button("Выйти"):
+            st.session_state.authenticated = False
+            st.session_state.username = None
+            st.experimental_rerun()
+    else:
+        auth_tabs = st.tabs(["Вход", "Регистрация"])
+
+            # Вкладка "Вход"
+        with auth_tabs[0]:
+            st.subheader("Вход")
+            username = st.text_input("Имя пользователя", key="login_username")
+            password = st.text_input("Пароль", type="password", key="login_password")
+            if st.button("Войти"):
+                user = authenticate_user(username, password)
+                if user:
+                    st.session_state.authenticated = True
+                    st.session_state.username = user['username']
+                    st.experimental_rerun()
+                else:
+                    st.error("Неверное имя пользователя или пароль.")
+
+            # Вкладка "Регистрация"
+        with auth_tabs[1]:
+            st.subheader("Регистрация")
+            new_username = st.text_input("Имя пользователя", key="register_username")
+            new_password = st.text_input("Пароль", type="password", key="register_password")
+            confirm_password = st.text_input("Подтвердите пароль", type="password", key="register_confirm_password")
+            if st.button("Зарегистрироваться"):
+                if new_password == confirm_password:
+                    try:
+                        create_user(new_username, new_password)
+                        st.success("Регистрация прошла успешно. Теперь вы можете войти.")
+                    except Exception as e:
+                        st.error(f"Ошибка регистрации: {e}")
+                else:
+                    st.error("Пароли не совпадают.")
+
+ '''
+        if st.button("Создать отзыв"):
+            with st.form(key="review_form"):
+                album_list = get_albums()
+                album_options = {album['title']: album['album_id'] for album in album_list}
+
+                album_name = st.selectbox("Выберите альбом", options=list(album_options.keys()))
+                rating = st.slider("Рейтинг", 1, 10, 5)
+                review_text = st.text_area("Текст отзыва")
+
+                submit_button = st.form_submit_button("Отправить")
+                if submit_button:
+                    print("ETOOOOO submit button")
+                    create_review(
+                        user_id=st.session_state.user_id,
+                        album_id=album_options[album_name],
+                        rating=rating,
+                        review_text=review_text
+                    )
+            '''
+_______________WRITE_ARICLE работающий код____________
+import streamlit as st
+import datetime
+def news_page():
+    '''
+    тут будет импорт статей из бд
+    '''
+    st.write('пока статей нет')
+    st.header("последние новости")
+    
+ 
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+def get_albums():
+    """Получает список альбомов из базы данных."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT album_id, title FROM albums")
+                return cur.fetchall()
+        except Exception as e:
+            st.error(f"Ошибка загрузки альбомов: {e}")
+        finally:
+            conn.close()
+    return []
+
+def add_review_to_db(user_id, album_id, rating, review_text):
+    """Добавляет отзыв в таблицу reviews."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO reviews (user_id, album_id, rating, review_text)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (user_id, album_id, rating, review_text)
+                )
+                conn.commit()
+                st.success("Отзыв успешно добавлен!")
+        except Exception as e:
+            st.error(f"Ошибка добавления отзыва: {e}")
+        finally:
+            conn.close()
+
+def get_db_connection():
+    """Устанавливает соединение с базой данных."""
+    try:
+        return psycopg2.connect(
+            host="localhost",
+            database="musicdb",
+            user="admin",
+            password="test"
+        )
+    except Exception as e:
+        st.error(f"Ошибка подключения к базе данных: {e}")
+        return None
+
+def review_page():
+    """Интерфейс добавления отзыва."""
+    if 'user_id' not in st.session_state or st.session_state.user_id is None:
+        st.warning("Вы должны быть авторизованы для добавления отзыва.")
+        st.session_state.update({"rerun": True}) 
+
+    st.header("Добавить отзыв")
+
+    # Получение списка альбомов
+    album_list = get_albums()
+    if not album_list:
+        st.error("Нет доступных альбомов для выбора.")
+        return
+
+    album_options = {album['title']: album['album_id'] for album in album_list}
+
+    with st.form(key="review_form"):
+        album_name = st.selectbox("Выберите альбом", options=list(album_options.keys()))
+        rating = st.slider("Рейтинг", 1, 10, 5)
+        review_text = st.text_area("Текст отзыва")
+
+        submit_button = st.form_submit_button("Отправить")
+        if submit_button:
+            if not review_text.strip():
+                st.error("Текст отзыва не может быть пустым.")
+            else:
+                add_review_to_db(
+                    user_id=st.session_state.user_id,
+                    album_id=album_options[album_name],
+                    rating=rating,
+                    review_text=review_text
+                )
+        
+
+
+
+_________________________________РАБОЧИЙ КОД ДЛЯ ДОБАВЛЕНИЯ АЛЬБОМА___________________
+import streamlit as st
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DB_CONFIG = {
+    "dbname": "musicdb",
+    "user": "admin",
+    "password": "test",
+    "host": "localhost",
+    "port": "5432",
+}
+
+def get_db_connection():
+    """Подключение к базе данных."""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        return conn
+    except Exception as e:
+        st.error(f"Ошибка подключения к базе данных: {e}")
+        return None
+
+def add_genre_if_not_exists(genre_name):
+    """Добавляет жанр, если он отсутствует в базе данных."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT genre_id FROM genres WHERE name = %s", (genre_name,))
+                genre = cur.fetchone()
+                if not genre:
+                    cur.execute("INSERT INTO genres (name) VALUES (%s) RETURNING genre_id", (genre_name,))
+                    conn.commit()
+                    genre = cur.fetchone()
+                return genre[0]
+        except Exception as e:
+            st.error(f"Ошибка добавления жанра: {e}")
+        finally:
+            conn.close()
+
+def add_artist_if_not_exists(artist_name, country, genre_id):
+    """Добавляет артиста, если он отсутствует в базе данных."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT artist_id FROM artists WHERE name = %s", (artist_name,))
+                artist = cur.fetchone()
+                if not artist:
+                    cur.execute(
+                        "INSERT INTO artists (name, country, genre_id) VALUES (%s, %s, %s) RETURNING artist_id",
+                        (artist_name, country, genre_id)
+                    )
+                    conn.commit()
+                    artist = cur.fetchone()
+                return artist[0]
+        except Exception as e:
+            st.error(f"Ошибка добавления артиста: {e}")
+        finally:
+            conn.close()
+
+def add_album(title, artist_id, genre_id, release_date, sales):
+    """Добавляет альбом в базу данных."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO albums (title, artist_id, genre_id, release_date, sales)
+                    VALUES (%s, %s, %s, %s, %s) RETURNING album_id
+                    """,
+                    (title, artist_id, genre_id, release_date, sales)
+                )
+                conn.commit()
+                album = cur.fetchone()
+                st.success(f"Альбом '{title}' успешно добавлен!")
+                return album[0]
+        except Exception as e:
+            st.error(f"Ошибка добавления альбома: {e}")
+        finally:
+            conn.close()
+
+# Streamlit UI
+def review_page():
+    st.title("Добавление нового альбома")
+
+    if 'authenticated' in st.session_state and st.session_state['authenticated']:
+        with st.form("add_album_form"):
+            album_title = st.text_input("Название альбома")
+            artist_name = st.text_input("Имя артиста")
+            artist_country = st.text_input("Страна артиста", value="Неизвестно")
+            genre_name = st.text_input("Жанр")
+            release_date = st.date_input("Дата выхода альбома")
+            sales = st.number_input("Продажи (в единицах)", min_value=0, step=1)
+            image_file = st.file_uploader("Загрузить обложку альбома", type=["jpg", "jpeg", "png"])
+        
+            submit = st.form_submit_button("Добавить альбом")
+        
+            if submit:
+                if not album_title or not artist_name or not genre_name:
+                    st.error("Все поля должны быть заполнены!")
+                else:
+                    try:
+                        genre_id = add_genre_if_not_exists(genre_name)
+                        artist_id = add_artist_if_not_exists(artist_name, artist_country, genre_id)
+                        album_id = add_album(album_title, artist_id, genre_id, release_date, sales)
+                    
+                        if image_file and album_id:
+                            add_album_cover(album_id, image_file)
+
+                    except Exception as e:
+                        st.error(f"Ошибка: {e}")
+    else:
+        st.error("Вы не авторизованы. Пожалуйста, войдите на вкладке авторизации.")
